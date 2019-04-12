@@ -1,0 +1,15 @@
+---
+- name: create redis
+  cloudformation:
+        region: "{{region}}"
+        stack_name: redis-{{Stage}}
+        template: ../cloudformation/redis.yml
+        termination_protection: yes
+        disable_rollback: false
+        template_parameters:
+           StageName: "{{Stage}}"
+           VpcId: "{{VpcId}}"
+           SubnetIds: "{{SubnetIds}}"
+        tags:
+            Stage: "{{Stage}}"
+  register: redis

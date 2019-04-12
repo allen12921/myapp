@@ -1,0 +1,47 @@
+---
+- rds_subnet_group:
+    state: present
+    name: myrds_subnet
+    description: My Fancy Ex Parrot Subnet Group
+    subnets: "{{SubnetIds.split(',')}}"
+    region: "{{region}}"
+  register: subgp
+  
+- ec2_group:
+    name: rds-sg-{{Stage}}
+    description: sg with rule for rds descriptions
+    vpc_id: "{{VpcId}}"
+    region: "{{region}}"
+    rules:
+      - proto: all
+        group_name: rds-sg-{{Stage}}
+  register: rds_sg
+  
+- rds:
+    command: create
+    instance_name: database-{{Stage}}
+    db_engine: postgres
+    apply_immediately: no
+    multi_zone: yes
+    subnet: myrds_subnet
+    size: 100
+    wait: yes
+    wait_timeout: 600
+    region: "{{region}}"
+    publicly_accessible: yes
+    instance_type: db.t2.micro
+    vpc_security_groups:
+        - "{{rds_sg.group_id}}"
+    username: myuser1234
+    password: mypass1234
+    tags:
+          Stage: "{{Stage}}"
+  register: rds
+
+#- name: create database
+  #  postgresql_db:
+  #    region: "{{region}}"
+  #    name: mydb
+  #    login_host:
+  #    login_password:
+  #    login_user:

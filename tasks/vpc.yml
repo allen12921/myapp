@@ -1,0 +1,27 @@
+---
+- name: create vpc
+  cloudformation:
+      region: "{{region}}"
+      stack_name: vpc-{{Stage}}
+      state: present
+      create_timeout: 10
+      termination_protection: yes
+      disable_rollback: false
+      template: cloudformation/vpc.yml
+      template_parameters:
+           VpcCidr: "{{VpcCidr}}"
+           SubnetCidr1: "{{SubnetCidr1}}"
+           SubnetCidr2: "{{SubnetCidr2}}"
+           VpcAvailabilityZones: "{{VpcAvailabilityZones}}"
+      tags:
+          Stage: "{{Stage}}"
+  register: vpc
+
+- cloudformation_facts:
+      region: "{{region}}"
+      stack_name: vpc-{{Stage}}
+      stack_resources: true
+
+- set_fact:
+      SubnetIds: "{{ansible_facts['cloudformation']['vpc-'+Stage].stack_resources['PubSubnetAz1']+','+ansible_facts['cloudformation']['vpc-'+Stage].stack_resources['PubSubnetAz2']}}"
+      VpcId: "{{vpc.stack_outputs['VpcId']}}"
