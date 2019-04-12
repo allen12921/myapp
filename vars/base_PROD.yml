@@ -1,5 +1,7 @@
 ---
   region: cn-north-1
+  ami: xa
+  exact_count: 2
   VpcCidr: 172.10.0.0/16
   SubnetCidr1: "172.10.1.0/24"
   SubnetCidr2: "172.10.2.0/24"

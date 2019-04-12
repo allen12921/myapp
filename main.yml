@@ -6,106 +6,7 @@
     - vars/base_{{Stage}}.yml
   tasks:
   - name: create vpc
-    cloudformation: 
-        region: "{{region}}"
-        stack_name: vpc-{{Stage}}
-        state: present
-        create_timeout: 10
-        termination_protection: yes
-        disable_rollback: false
-        template: cloudformation/vpc.yml
-        template_parameters:
-             VpcCidr: "{{VpcCidr}}"
-             SubnetCidr1: "{{SubnetCidr1}}"
-             SubnetCidr2: "{{SubnetCidr2}}"
-             VpcAvailabilityZones: "{{VpcAvailabilityZones}}"
-        tags:
-            Stage: "{{Stage}}"
-    register: vpc
-  - cloudformation_facts:
-        region: "{{region}}"
-        stack_name: vpc-{{Stage}}
-        stack_resources: true  
-  - set_fact:
-      SubnetIds: "{{ansible_facts['cloudformation']['vpc-'+Stage].stack_resources['PubSubnetAz1']+','+ansible_facts['cloudformation']['vpc-'+Stage].stack_resources['PubSubnetAz2']}}"
-      VpcId: "{{vpc.stack_outputs['VpcId']}}"
-  - name: create ec2 ssh key
-    ec2_key:
-       name: ec2-{{Stage}}-key
-       region: "{{region}}"
-       key_material: "{{ lookup('file', 'files/id_rsa.pub') }}"
-#  - name: create ecs,redis,rds
-#    cloudformation:
-#        region: "{{region}}"
-#        stack_name: base-services-{{Stage}}
-#        template: cloudformation/ecs.yml
-#        termination_protection: yes
-#        disable_rollback: false
-##        template_parameters: 
-#           KeyName: ec2-{{Stage}}-key
-#           StageName: "{{Stage}}"
-#           EcsClusterName: "Cluster-{{Stage}}" 
-#           VpcId: "{{VpcId}}"
-#           SubnetIds: "{{SubnetIds}}"
-#           LBListenerPort: 80          
-#        tags:
-#            Stage: "{{Stage}}"
-#    register: base_service
-  
-#  - name: create redis
-#    cloudformation:
-#        region: "{{region}}"
-#        stack_name: redis-{{Stage}}
-#        template: cloudformation/redis.yml
-#        termination_protection: yes
-#        disable_rollback: false
-#        template_parameters:
-#           StageName: "{{Stage}}"
-#           VpcId: "{{VpcId}}"
-#           SubnetIds: "{{SubnetIds}}"
-#        tags:
-#            Stage: "{{Stage}}"
-#    register: redis
-
-  - rds_subnet_group:
-      state: present
-      name: myrds_subnet
-      description: My Fancy Ex Parrot Subnet Group
-      subnets: "{{SubnetIds.split(',')}}"
-      region: "{{region}}"
-    register: subgp
-
-  - ec2_group:
-      name: rds-sg-{{Stage}}
-      description: sg with rule for rds descriptions
-      vpc_id: "{{VpcId}}"
-      region: "{{region}}"
-      rules:
-        - proto: all
-          group_name: rds-sg-{{Stage}}
-    register: sg
-
-  - rds:
-      command: create
-      instance_name: database-{{Stage}}
-      db_engine: postgres
-      apply_immediately: no
-      multi_zone: yes
-      subnet: myrds_subnet
-      size: 100
-      wait: yes
-      wait_timeout: 600
-      region: "{{region}}"
-      publicly_accessible: yes
-      instance_type: db.t2.micro
-      vpc_security_groups:
-          - "{{sg.group_id}}"
-      username: myuser1234
-      password: mypass1234
-      tags:
-            Stage: "{{Stage}}"
-    register: rds    
-
+    include_tasks: tasks/vpc.yml
 
   - name: create ecr 
     ecs_ecr: 
@@ -113,15 +14,25 @@
         region: "{{region}}"   
     register: ecr
  
- 
-  #- name: create database
-  #  postgresql_db:
-  #    region: "{{region}}"
-  #    name: mydb
-  #    login_host:
-  #    login_password: 
-  #    login_user:
+  - name: create redis
+    include_tasks: tasks/redis.yml
+
+  - name: create rds
+    include_tasks: tasks/rds.yml
+
+  - name: create ec2
+    include_tasks: tasks/ec2.yml
+
+ - name: debug events
+    debug: msg="{{ecr.repository.repositoryUri}} {{redis.stack_outputs.RedisAddress}}:6379"
   
+- name: playbook on docker swarm master
+  hosts: docker[0:2]
+  gather_facts: false
+  tasks:
+  - name: create docker swarm master
+    include_tasks: tasks/docker_swarm_master.yml
+ 
   #- name: Clone git repository
   #  git: 
   #    repo: https://github.com/allen12921/myapp.git
@@ -129,6 +40,7 @@
   #    version: "{{release_tag}}"
   #    force: yes
   #  register: appsrc
+  #  run_once: true
   
   #- name: Build app image and push it to ecr
   #  docker_image:
@@ -137,12 +49,11 @@
   #    tag: "{{appsrc.after}}"
   #    push: no
   #  when: appsrc.changed
-  
+  #  run_once: true
+  handlers:
+  - name: restart docker
+    service: name=docker state=restarted enabled=yes  
   #- name: create or update myapp ecs service
   #  register: myapp 
-  -  cloudformation_facts:
-        region: "{{region}}"
-        stack_name: vpc-{{Stage}}
-        stack_resources: true
-  - name: debug events
-    debug: msg="{{ecr.repository.repositoryUri}} {{redis.stack_outputs.RedisAddress}}:6379"
+#delegate_to:
+#handlers:
