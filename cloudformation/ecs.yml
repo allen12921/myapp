@@ -26,12 +26,16 @@ Parameters:
       Defaults to t2.micro
     Default: t2.micro
     ConstraintDescription: must be a valid EC2 instance type.
-  DBInstanceType:
+  DBInstanceType: 
+    Type: String
+    Description: >
       Specifies the RDS instance type for your container instances.
       Defaults to db.t2.small
     Default: db.t2.small
     ConstraintDescription: must be a valid RDS instance type.     
   CacheInstanceType:
+    Type: String  
+    Description: >      
       Specifies the elasticache instance type for your container instances.
       Defaults to cache.t2.micro
     Default:  cache.t2.micro
@@ -432,106 +436,111 @@ Resources:
           FromPort: !Ref LBListenerPort
           ToPort: !Ref LBListenerPort
 
-  DatabaseSubnetGroup:
-    Type: AWS::RDS::DBSubnetGroup
-    Properties:
-      DBSubnetGroupDescription: CloudFormation managed DB subnet group.
-      SubnetIds: !Ref SubnetIds
-
-  MyDBCluster:
-    Type: AWS::RDS::DBCluster
-    Properties:
-      Engine: aurora-postgresql
-      MasterUsername: !Ref "DatabaseUsername"
-      MasterUserPassword: !Ref "DatabasePassword"
-      BackupRetentionPeriod: 7
-      PreferredBackupWindow: 01:00-02:00
-      PreferredMaintenanceWindow: mon:03:00-mon:04:00
-      DBSubnetGroupName: !Ref "DatabaseSubnetGroup"
-      VpcSecurityGroupIds: !GetAtt [ EcsSecurityGroup, GroupId ]
-
-  DatabasePrimaryInstance:
-    Type: AWS::RDS::DBInstance
-    Properties:
-      Engine: aurora-postgresql
-      DBClusterIdentifier: !Ref "DatabaseCluster"
-      DBInstanceClass: !Ref "DBInstanceType"
-      DBSubnetGroupName: !Ref "DatabaseSubnetGroup"
-
-  DatabaseReplicaInstance:
-    Type: AWS::RDS::DBInstance
-    Properties:
-      Engine: aurora-postgresql
-      DBClusterIdentifier: !Ref "DatabaseCluster"
-      DBInstanceClass: !Ref "DBInstanceType"
-      DBSubnetGroupName: !Ref "DatabaseSubnetGroup"
-
-  AlarmTopic:
-    Type: AWS::SNS::Topic
-    Properties:
-      DisplayName:  Alarm Topic
-
-  DatabaseReplicaReplicationAlarm:
-    Type: AWS::CloudWatch::Alarm
-    Properties:
-      AlarmDescription: Database replication latency is over 300ms.
-      Namespace: AWS/RDS
-      MetricName: AuroraReplicaLag
-      Unit: Milliseconds
-      Statistic: Average
-      Period: 300
-      EvaluationPeriods: 2
-      Threshold: 300
-      ComparisonOperator: GreaterThanOrEqualToThreshold
-      Dimensions:
-        - Name: DBInstanceIdentifier
-          Value: !Ref "DatabaseReplicaInstance"
-      AlarmActions:
-        - Ref: AlarmTopic
-
-  DatabaseMasterReplicationAlarm:
-    Type: AWS::CloudWatch::Alarm
-    Properties:
-      AlarmDescription: Database replication latency is over 300ms.
-      Namespace: AWS/RDS
-      MetricName: AuroraReplicaLag
-      Unit: Milliseconds
-      Statistic: Average
-      Period: 300
-      EvaluationPeriods: 2
-      Threshold: 300
-      ComparisonOperator: GreaterThanOrEqualToThreshold
-      Dimensions:
-        - Name: DBInstanceIdentifier
-          Value: !Ref "DatabasePrimaryInstance"
-      AlarmActions:
-        - Ref: AlarmTopic
- 
-  CacheSubnetGroup:
-        Type: AWS::ElastiCache::SubnetGroup
-        Properties:
-            Description: "Cache Subnet Group"
-            SubnetIds:
-                Ref: SubnetIds 
-
-  ElastiCacheCluster:
-        Type: AWS::ElastiCache::ReplicationGroup
-        Properties:
-            AutomaticFailoverEnabled: true
-            AutoMinorVersionUpgrade: true
-            CacheNodeType: !Ref CacheInstanceType
-            CacheSubnetGroupName: !Ref CacheSubnetGroup
-            Engine: 'redis'
-            NumCacheClusters: 2
-#            Port: !Ref CachePort
-            ReplicationGroupDescription: 'Redis cluster'
-            SecurityGroupIds: !GetAtt [ EcsSecurityGroup, GroupId ]
-
-                
+#  DatabaseSubnetGroup:
+#    Type: AWS::RDS::DBSubnetGroup
+#    Properties:
+#      DBSubnetGroupDescription: CloudFormation managed DB subnet group.
+#      SubnetIds: !Ref SubnetIds
+#
+#  MyDBCluster:
+#    Type: AWS::RDS::DBCluster
+#    Properties:
+#      Engine: aurora-postgresql
+#      MasterUsername: !Ref "DatabaseUsername"
+#      MasterUserPassword: !Ref "DatabasePassword"
+#      BackupRetentionPeriod: 7
+#      PreferredBackupWindow: 01:00-02:00
+#      PreferredMaintenanceWindow: mon:03:00-mon:04:00
+#      DBSubnetGroupName: !Ref "DatabaseSubnetGroup"
+#      VpcSecurityGroupIds: !GetAtt [ EcsSecurityGroup, GroupId ]
+#
+#  DatabasePrimaryInstance:
+#    Type: AWS::RDS::DBInstance
+#    Properties:
+#      Engine: aurora-postgresql
+#      DBClusterIdentifier: !Ref "DatabaseCluster"
+#      DBInstanceClass: !Ref "DBInstanceType"
+#      DBSubnetGroupName: !Ref "DatabaseSubnetGroup"
+#
+#  DatabaseReplicaInstance:
+#    Type: AWS::RDS::DBInstance
+#    Properties:
+#      Engine: aurora-postgresql
+#      DBClusterIdentifier: !Ref "DatabaseCluster"
+#      DBInstanceClass: !Ref "DBInstanceType"
+#      DBSubnetGroupName: !Ref "DatabaseSubnetGroup"
+#
+#  AlarmTopic:
+#    Type: AWS::SNS::Topic
+#    Properties:
+#      DisplayName:  Alarm Topic
+#
+#  DatabaseReplicaReplicationAlarm:
+#    Type: AWS::CloudWatch::Alarm
+#    Properties:
+#      AlarmDescription: Database replication latency is over 300ms.
+#      Namespace: AWS/RDS
+#      MetricName: AuroraReplicaLag
+#      Unit: Milliseconds
+#      Statistic: Average
+#      Period: 300
+#      EvaluationPeriods: 2
+#      Threshold: 300
+#      ComparisonOperator: GreaterThanOrEqualToThreshold
+#      Dimensions:
+#        - Name: DBInstanceIdentifier
+#          Value: !Ref "DatabaseReplicaInstance"
+#      AlarmActions:
+#        - Ref: AlarmTopic
+#
+#  DatabaseMasterReplicationAlarm:
+#    Type: AWS::CloudWatch::Alarm
+#    Properties:
+#      AlarmDescription: Database replication latency is over 300ms.
+#      Namespace: AWS/RDS
+#      MetricName: AuroraReplicaLag
+#      Unit: Milliseconds
+#      Statistic: Average
+#      Period: 300
+#      EvaluationPeriods: 2
+#      Threshold: 300
+#      ComparisonOperator: GreaterThanOrEqualToThreshold
+#      Dimensions:
+#        - Name: DBInstanceIdentifier
+#          Value: !Ref "DatabasePrimaryInstance"
+#      AlarmActions:
+#        - Ref: AlarmTopic
+# 
+#  CacheSubnetGroup:
+#        Type: AWS::ElastiCache::SubnetGroup
+#        Properties:
+#            Description: "Cache Subnet Group"
+#            SubnetIds:
+#                Ref: SubnetIds 
+#
+#  ElastiCacheCluster:
+#        Type: AWS::ElastiCache::ReplicationGroup
+#        Properties:
+#            AutomaticFailoverEnabled: true
+#            AutoMinorVersionUpgrade: true
+#            CacheNodeType: !Ref CacheInstanceType
+#            CacheSubnetGroupName: !Ref CacheSubnetGroup
+#            Engine: 'redis'
+#            NumCacheClusters: 2
+##            Port: !Ref CachePort
+#            ReplicationGroupDescription: 'Redis cluster'
+#            SecurityGroupIds: !GetAtt [ EcsSecurityGroup, GroupId ]
+#
+#                
 Outputs:
   EcsInstanceAsgName:
     Description: Auto Scaling Group Name for ECS Instances
     Value: !Ref EcsInstanceAsg
+  ContainerAutoScalingRole:
+    Description: Auto Scaling Role ARN for ecs service auto scaling
+    Value: !GetAtt [ ApplicationAutoScalingRole, Arn ]
+    Export:
+       Name: !Sub ApplicationAutoScalingRole-${StageName}
   EcsInstanceSecurityGroupID:
     Description: Security Group ID of Auto Scaling Group Container Instance
     Value: !Ref EcsSecurityGroup
@@ -552,9 +561,9 @@ Outputs:
     Value: !GetAtt LoadBalancerInternet.DNSName
     Export:
       Name: !Sub LoadBalancer-internet-facing-DNS-${StageName}
-  DBEndpoint:
-    Description: The connection endpoint for the database.
-    Value: !GetAtt  DatabasePrimaryInstance.Endpoint.Address
-  RedisAddress:
-     Description: 'The DNS address of the primary read-write cache node.'
-     Value: !GetAtt ElastiCacheCluster.PrimaryEndPoint.Address  
+#  DBEndpoint:
+#    Description: The connection endpoint for the database.
+#    Value: !GetAtt  DatabasePrimaryInstance.Endpoint.Address
+#  RedisAddress:
+#     Description: 'The DNS address of the primary read-write cache node.'
+#     Value: !GetAtt ElastiCacheCluster.PrimaryEndPoint.Address  
