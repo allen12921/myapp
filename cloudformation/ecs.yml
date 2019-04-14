@@ -267,45 +267,46 @@ Resources:
          Fn::GetAtt:
          - EcsSecurityGroup
          - GroupId
-  IamInstanceRole:
-    Type: 'AWS::IAM::Role'
-    Properties:
-      RoleName: EcsEc2Role
-      Path: /
-      AssumeRolePolicyDocument:
-        Version: 2012-10-17
-        Statement:
-          - 
-            Action: 'sts:AssumeRole'
-            Effect: Allow
-            Principal:
-              Service: ec2.amazonaws.com.cn
-      ManagedPolicyArns:
-         - arn:aws-cn:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role
-         - arn:aws-cn:iam::aws:policy/AmazonEC2ContainerRegistryPowerUser
-      Policies:
-       -
-        PolicyName: "PutMetrics"
-        PolicyDocument:
-          Version: 2012-10-17
-          Statement:
-          -
-           Resource: '*'
-           Effect: Allow
-           Action:
-                - 'cloudwatch:PutMetricData'
-                - 'cloudwatch:GetMetricStatistics'
-                - 'cloudwatch:ListMetrics'
-          -
-           Resource: '*'
-           Effect: Allow
-           Action: 'ec2:DescribeTags'
+#  IamInstanceRole:
+#    Type: 'AWS::IAM::Role'
+#    Properties:
+#      RoleName: EcsEc2Role
+#      Path: /
+#      AssumeRolePolicyDocument:
+#        Version: 2012-10-17
+#        Statement:
+#          - 
+#            Action: 'sts:AssumeRole'
+#            Effect: Allow
+#            Principal:
+#              Service: ec2.amazonaws.com.cn
+#      ManagedPolicyArns:
+#         - arn:aws-cn:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role
+#         - arn:aws-cn:iam::aws:policy/AmazonEC2ContainerRegistryPowerUser
+#      Policies:
+#       -
+#        PolicyName: "PutMetrics"
+#        PolicyDocument:
+#          Version: 2012-10-17
+#          Statement:
+#          -
+#           Resource: '*'
+#           Effect: Allow
+#           Action:
+#                - 'cloudwatch:PutMetricData'
+#                - 'cloudwatch:GetMetricStatistics'
+#                - 'cloudwatch:ListMetrics'
+#          -
+#           Resource: '*'
+#           Effect: Allow
+#           Action: 'ec2:DescribeTags'
   EcsInstanceProfile:
    Type: "AWS::IAM::InstanceProfile"
    Properties: 
      Path: /
      Roles:
-       - !Ref IamInstanceRole
+#       - !Ref IamInstanceRole
+       - arn:aws-cn:iam::310286035192:role/aws-service-role/ecs.amazonaws.com/AWSServiceRoleForECS
      InstanceProfileName: Ec2InstanceProfile
 
   EcsInstanceLc:
@@ -406,20 +407,20 @@ Resources:
       ComparisonOperator: GreaterThanThreshold
       MetricName: MemoryReservation
 
-  ApplicationAutoScalingRole:
-    Type: 'AWS::IAM::Role'
-    Properties:
-      Path: /
-      AssumeRolePolicyDocument:
-        Version: 2012-10-17
-        Statement:
-          - 
-            Action: 'sts:AssumeRole'
-            Effect: Allow
-            Principal:
-              Service: application-autoscaling.amazonaws.com.cn
-      ManagedPolicyArns:
-         - arn:aws-cn:iam::aws:policy/service-role/AmazonEC2ContainerServiceAutoscaleRole
+#  ApplicationAutoScalingRole:
+#    Type: 'AWS::IAM::Role'
+#    Properties:
+#      Path: /
+#      AssumeRolePolicyDocument:
+#        Version: 2012-10-17
+#        Statement:
+#          - 
+#            Action: 'sts:AssumeRole'
+#            Effect: Allow
+#            Principal:
+#              Service: application-autoscaling.amazonaws.com.cn
+#      ManagedPolicyArns:
+#         - arn:aws-cn:iam::aws:policy/service-role/AmazonEC2ContainerServiceAutoscaleRole
 
   AlbSecurityGroup:
     Type: "AWS::EC2::SecurityGroup"
@@ -536,11 +537,11 @@ Outputs:
   EcsInstanceAsgName:
     Description: Auto Scaling Group Name for ECS Instances
     Value: !Ref EcsInstanceAsg
-  ContainerAutoScalingRole:
-    Description: Auto Scaling Role ARN for ecs service auto scaling
-    Value: !GetAtt [ ApplicationAutoScalingRole, Arn ]
-    Export:
-       Name: !Sub ApplicationAutoScalingRole-${StageName}
+#  ContainerAutoScalingRole:
+#    Description: Auto Scaling Role ARN for ecs service auto scaling
+#    Value: !GetAtt [ ApplicationAutoScalingRole, Arn ]
+#    Export:
+#       Name: !Sub ApplicationAutoScalingRole-${StageName}
   EcsInstanceSecurityGroupID:
     Description: Security Group ID of Auto Scaling Group Container Instance
     Value: !Ref EcsSecurityGroup
@@ -566,4 +567,4 @@ Outputs:
 #    Value: !GetAtt  DatabasePrimaryInstance.Endpoint.Address
 #  RedisAddress:
 #     Description: 'The DNS address of the primary read-write cache node.'
-#     Value: !GetAtt ElastiCacheCluster.PrimaryEndPoint.Address  
+#     Value: !GetAtt ElastiCacheCluster.PrimaryEndPoint.Address 
