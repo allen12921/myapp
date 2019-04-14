@@ -1,0 +1,327 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  AWS CloudFormation template to create a new VPC
+Parameters:
+  VpcId:
+    Type: String
+    Description: >
+      Optional - Specifies the ID of an existing VPC in which to launch
+      your container instances. If you specify a VPC ID, you must specify a list of
+      existing subnets in that VPC. If you do not specify a VPC ID, a new VPC is created
+      with atleast 1 subnet.
+    Default: ''
+    ConstraintDescription: >
+      VPC Id must begin with 'vpc-' or leave blank to have a
+      new VPC created
+  SubnetIds:
+    Type: CommaDelimitedList
+    Description: >
+      Optional - Specifies the Comma separated list of existing VPC Subnet
+      Ids where ECS instances will run
+    Default: ''
+  SecurityGroupId:
+    Type: String
+    Description: >
+      Optional - Specifies the Security Group Id of an existing Security
+      Group. Leave blank to have a new Security Group created
+    Default: ''
+  VpcCidr:
+    Type: String
+    Description: Optional - Specifies the CIDR Block of VPC
+    Default: ''
+  SubnetCidr1:
+    Type: String
+    Description: Specifies the CIDR Block of Subnet 1
+    Default: ''
+  SubnetCidr2:
+    Type: String
+    Description: Specifies the CIDR Block of Subnet 2
+    Default: ''
+  SubnetCidr3:
+    Type: String
+    Description: Specifies the CIDR Block of Subnet 3
+    Default: ''
+  PriSubnetCidr1:
+    Type: String
+    Description: Specifies the CIDR Block of PriSubnet 1
+    Default: ''
+  PriSubnetCidr2:
+    Type: String
+    Description: Specifies the CIDR Block of PriSubnet 2
+    Default: ''
+  PriSubnetCidr3:
+    Type: String
+    Description: Specifies the CIDR Block of PriSubnet 3
+    Default: ''
+  VpcAvailabilityZones:
+    Type: CommaDelimitedList
+    Description: >
+      Specifies a comma-separated list of VPC Availability Zones for
+      the creation of new subnets. These zones must have the available status.
+    Default: 'cn-north-1a,cn-north-1b'
+
+Conditions:
+  CreateNewVpc:
+    !Equals [!Ref VpcId, '']
+  CreateSubnet1: !And
+    - !Not [!Equals [!Ref SubnetCidr1, '']]
+    - !Condition CreateNewVpc
+  CreateSubnet2: !And
+    - !Not [!Equals [!Ref SubnetCidr2, '']]
+    - !Condition CreateSubnet1
+  CreateSubnet3: !And
+    - !Not [!Equals [!Ref SubnetCidr3, '']]
+    - !Condition CreateSubnet2
+  CreatePriSubnet1: !And
+    - !Not [!Equals [!Ref PriSubnetCidr1, '']]
+    - !Condition CreateNewVpc
+  CreatePriSubnet2: !And
+    - !Not [!Equals [!Ref PriSubnetCidr2, '']]
+    - !Condition CreateSubnet1
+  CreatePriSubnet3: !And
+    - !Not [!Equals [!Ref PriSubnetCidr3, '']]
+    - !Condition CreateSubnet2
+  CreateNewSecurityGroup:
+     !Equals [!Ref SecurityGroupId, '']
+
+Resources:
+  Vpc:
+    Condition: CreateSubnet1
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCidr
+      EnableDnsSupport: 'true'
+      EnableDnsHostnames: 'true'
+  PubSubnetAz1:
+    Condition: CreateSubnet1
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: !Ref SubnetCidr1
+      AvailabilityZone: !Select [ 0, !Ref VpcAvailabilityZones ]
+      Tags:
+        -
+          Key: "Name"
+          Value: !Join [ "/", [ !Ref 'AWS::StackName' , 'Public' ] ]
+  PubSubnetAz2:
+    Condition: CreateSubnet2
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: !Ref SubnetCidr2
+      AvailabilityZone: !Select [ 1, !Ref VpcAvailabilityZones ]
+      Tags:
+        -
+          Key: "Name"
+          Value: !Join [ "/", [ !Ref 'AWS::StackName' , 'Public' ] ]
+
+  PubSubnetAz3:
+    Condition: CreateSubnet3
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: !Ref SubnetCidr3
+      AvailabilityZone: !Select [ 2, !Ref VpcAvailabilityZones ]
+      Tags:
+        -
+          Key: "Name"
+          Value: !Join [ "/", [ !Ref 'AWS::StackName' , 'Public' ] ]
+  PriSubnetAz1:
+    Condition: CreatePriSubnet1
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: !Ref PriSubnetCidr1
+      AvailabilityZone: !Select [ 0, !Ref VpcAvailabilityZones ]
+      Tags:
+        -
+          Key: "Name"
+          Value: !Join [ "/", [ !Ref 'AWS::StackName' , 'Pri' ] ]
+  PriSubnetAz2:
+    Condition: CreatePriSubnet2
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: !Ref PriSubnetCidr2
+      AvailabilityZone: !Select [ 1, !Ref VpcAvailabilityZones ]
+      Tags:
+        -
+          Key: "Name"
+          Value: !Join [ "/", [ !Ref 'AWS::StackName' , 'Pri' ] ]
+
+  PriSubnetAz3:
+    Condition: CreatePriSubnet3
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: !Ref PriSubnetCidr3
+      AvailabilityZone: !Select [ 2, !Ref VpcAvailabilityZones ]
+      Tags:
+        -
+          Key: "Name"
+          Value: !Join [ "/", [ !Ref 'AWS::StackName' , 'Pri' ] ]
+  NatGatewayAz1:
+    Condition: CreatePriSubnet1
+    DependsOn: AttachGateway
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId:
+        Fn::GetAtt:
+          - EIPAz1
+          - AllocationId
+      SubnetId:
+         Ref: PubSubnetAz1
+      Tags:
+        - Key: foo
+          Value: bar
+  NatGatewayAz2:
+    Condition: CreatePriSubnet2
+    DependsOn: AttachGateway
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId:
+        Fn::GetAtt:
+          - EIPAz2
+          - AllocationId
+      SubnetId:
+         Ref: PubSubnetAz2
+      Tags:
+        - Key: foo
+          Value: bar
+  NatGatewayAz3:
+    Condition: CreatePriSubnet3
+    DependsOn: AttachGateway
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId:
+        Fn::GetAtt:
+          - EIPAz3
+          - AllocationId
+      SubnetId:
+         Ref: PubSubnetAz3
+      Tags:
+        - Key: foo
+          Value: bar
+  EIPAz1:
+    Condition: CreatePriSubnet1
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+  EIPAz2:
+    Condition: CreatePriSubnet2
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc 
+  EIPAz3:
+    Condition: CreatePriSubnet3
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+  RouteViaNatAz1:
+    Condition: CreatePriSubnet1
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc  
+  RouteViaNatAz2:
+    Condition: CreatePriSubnet2
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc 
+  RouteViaNatAz3:
+    Condition: CreatePriSubnet3
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc   
+  PublicRouteViaNatAz1:
+    Condition: CreatePriSubnet1
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref RouteViaNatAz1
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGatewayAz1  
+  PublicRouteViaNatAz2:
+    Condition: CreatePriSubnet2
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref RouteViaNatAz2
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGatewayAz2 
+  PublicRouteViaNatAz3:
+    Condition: CreatePriSubnet3
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref RouteViaNatAz3
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGatewayAz3  
+  PriSubnet1RouteTableAssociation:
+    Condition: CreatePriSubnet1
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PriSubnetAz1
+      RouteTableId: !Ref RouteViaNatAz1
+  PriSubnet2RouteTableAssociation:
+    Condition: CreatePriSubnet2
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PriSubnetAz2
+      RouteTableId: !Ref RouteViaNatAz2
+  PriSubnet3RouteTableAssociation:
+    Condition: CreatePriSubnet3
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PriSubnetAz3
+      RouteTableId: !Ref RouteViaNatAz3
+
+  InternetGateway:
+    Condition: CreateSubnet1
+    Type: AWS::EC2::InternetGateway
+  AttachGateway:
+    Condition: CreateSubnet1
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref Vpc
+      InternetGatewayId: !Ref InternetGateway
+  RouteViaIgw:
+    Condition: CreateSubnet1
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+  PublicRouteViaIgw:
+    Condition: CreateSubnet1
+    Type: AWS::EC2::Route
+    DependsOn: AttachGateway
+    Properties:
+      RouteTableId: !Ref RouteViaIgw
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+  PubSubnet1RouteTableAssociation:
+    Condition: CreateSubnet1
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PubSubnetAz1
+      RouteTableId: !Ref RouteViaIgw
+  PubSubnet2RouteTableAssociation:
+    Condition: CreateSubnet2
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PubSubnetAz2
+      RouteTableId: !Ref RouteViaIgw
+  PubSubnet3RouteTableAssociation:
+    Condition: CreateSubnet3
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PubSubnetAz3
+      RouteTableId: !Ref RouteViaIgw
+
+
+Outputs:
+  VpcId:
+    Description: New vpc id
+    Value: !Ref Vpc
+#  PriSubnets:
+#    Condition: CreatePriSubnet1
+#    Description: Private IP subnets
+#    Value: !GetAtt VpcPriSubnets.CidrBlock 
+#  PubSubnets:
+#    Description: Public IP subnets
+#    Value: !GetAtt VpcPubSubnets.CidrBlock   

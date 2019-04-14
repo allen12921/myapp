@@ -1,0 +1,6 @@
+---
+  region: cn-north-1
+  VpcCidr: 172.10.0.0/16
+  SubnetCidr1: "172.10.1.0/24"
+  SubnetCidr2: "172.10.2.0/24"
+  VpcAvailabilityZones: 'cn-north-1a,cn-north-1b'

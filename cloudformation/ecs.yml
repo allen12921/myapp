@@ -1,0 +1,560 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  AWS CloudFormation template to use an existing VPC for ECS deployment
+  in Create Cluster Wizard.
+Parameters:
+  StageName:
+    Type: String
+    Default: PROD
+    AllowedValues:
+      - UAT
+      - PROD
+      - QA
+  EcsClusterName:
+    Type: String
+    Description: >
+      Specifies the ECS Cluster Name with which the resources would be
+      associated
+    Default: default
+  EC2ReservedMemory:
+    Type: Number
+    Default: 125
+  EcsInstanceType:
+    Type: CommaDelimitedList
+    Description: >
+      Specifies the EC2 instance type for your container instances.
+      Defaults to t2.micro
+    Default: t2.micro
+    ConstraintDescription: must be a valid EC2 instance type.
+  DBInstanceType:
+      Specifies the RDS instance type for your container instances.
+      Defaults to db.t2.small
+    Default: db.t2.small
+    ConstraintDescription: must be a valid RDS instance type.     
+  CacheInstanceType:
+      Specifies the elasticache instance type for your container instances.
+      Defaults to cache.t2.micro
+    Default:  cache.t2.micro
+    ConstraintDescription: must be a valid elasticache instance type.    
+  KeyName:
+    Type: String
+    Description: >
+      Optional - Specifies the name of an existing Amazon EC2 key pair
+      to enable SSH access to the EC2 instances in your cluster.
+    Default: ''
+  VpcId:
+    Type: String
+    Description: >
+      Optional - Specifies the ID of an existing VPC in which to launch
+      your container instances. If you specify a VPC ID, you must specify a list of
+      existing subnets in that VPC. If you do not specify a VPC ID, a new VPC is created
+      with atleast 1 subnet.
+    Default: 'vpc-005ba32235ba7fab5'
+    ConstraintDescription: >
+      VPC Id must begin with 'vpc-'
+  SubnetIds:
+#    Type: CommaDelimitedList
+    Type: List<AWS::EC2::Subnet::Id> 
+    Description: >
+      Optional - Specifies the Comma separated list of existing VPC Subnet
+      Ids where ECS instances will run
+    Default: "subnet-083d3429fc0a1118c,subnet-06d160788ce2f5d07"
+  SecurityGroupId:
+    Type: String
+    Description: >
+      Optional - Specifies the Security Group Id of an existing Security
+      Group. Leave blank to have a new Security Group created
+    Default: ''
+  AsgMinSize:
+    Type: Number
+    Default: '1'
+  AsgMaxSize:
+    Type: Number
+    Description: >
+      Specifies the number of instances to launch and register to the cluster.
+      Defaults to 3.
+    Default: '3'
+  SecurityIngressFromPort:
+    Type: Number
+    Description: >
+      Optional - Specifies the Start of Security Group port to open on
+      ECS instances - defaults to port 0
+    Default: '22'
+  SecurityIngressToPort:
+    Type: Number
+    Description: >
+      Optional - Specifies the End of Security Group port to open on ECS
+      instances - defaults to port 65535
+    Default: '22'
+  SecurityIngressCidrIp:
+    Type: String
+    Description: >
+      Optional - Specifies the CIDR/IP range for Security Ports - defaults
+      to 0.0.0.0/0
+    Default: 0.0.0.0/0
+  EcsEndpoint:
+    Type: String
+    Description: >
+      Optional - Specifies the ECS Endpoint for the ECS Agent to connect to
+    Default: ''
+  EbsVolumeSize:
+    Type: Number
+    Description: >
+      Optional - Specifies the Size in GBs, of the newly created Amazon
+      Elastic Block Store (Amazon EBS) volume
+    Default: '30'
+  EbsVolumeType:
+    Type: String
+    Description: Optional - Specifies the Type of (Amazon EBS) volume
+    Default: 'gp2'
+    AllowedValues:
+      - ''
+      - standard
+      - io1
+      - gp2
+      - sc1
+      - st1
+    ConstraintDescription: Must be a valid EC2 volume type.
+  DeviceName:
+    Type: String
+    Description: Optional - Specifies the device mapping for the Volume
+    Default: /dev/xvdcz
+  IsWindows:
+    Type: String
+    Default: 'false'
+  PolicyTargetValue:
+    Type: Number
+    Default: 60
+  LBScheme:
+    Type: String
+    Default: internet-facing
+    AllowedValues:
+         - internal
+         - internet-facing
+  LBListenerPort:
+     Type: Number
+     Default: 80
+Conditions:
+  CreateEC2LCWithKeyPair:
+    !Not [!Equals [!Ref KeyName, '']]
+  SetEndpointToECSAgent:
+    !Not [!Equals [!Ref EcsEndpoint, '']]
+  CreateNewSecurityGroup:
+    !Equals [!Ref SecurityGroupId, '']
+Mappings:
+  AWSRegionToAMI:
+    ap-south-1:
+      AMI: ami-00491f6f
+    eu-west-3:
+      AMI: ami-9aef59e7
+    eu-west-2:
+      AMI: ami-67cbd003
+    eu-west-1:
+      AMI: ami-1d46df64
+    ap-northeast-2:
+      AMI: ami-c212b2ac
+    ap-northeast-1:
+      AMI: ami-872c4ae1
+    sa-east-1:
+      AMI: ami-af521fc3
+    ca-central-1:
+      AMI: ami-435bde27
+    ap-southeast-1:
+      AMI: ami-910d72ed
+    ap-southeast-2:
+      AMI: ami-58bb443a
+    eu-central-1:
+      AMI: ami-509a053f
+    us-east-1:
+      AMI: ami-28456852
+    us-east-2:
+      AMI: ami-ce1c36ab
+    us-west-1:
+      AMI: ami-74262414
+    us-west-2:
+      AMI: ami-decc7fa6
+    cn-north-1:
+      AMI: ami-0cc666da56660652a
+    cn-northwest-1:
+      AMI: ami-0dd409b2248c24a1a
+
+Resources:
+  Cluster:
+      Type: AWS::ECS::Cluster
+      Properties:
+        ClusterName: !Sub ${EcsClusterName}-${StageName}
+
+  LoadBalancerInternet:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Tags:
+        -
+          Key: Stage
+          Value: !Ref StageName
+      Name: !Sub ${EcsClusterName}-${StageName}-internet
+      Subnets: !Ref SubnetIds
+      Scheme: internet-facing
+      SecurityGroups:
+          - !Ref AlbSecurityGroup
+
+  LoadBalancerListenerInternet:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref LoadBalancerInternet
+      Port: !Ref LBListenerPort
+      Protocol: HTTP
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroupInternet
+
+  TargetGroupInternet:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Tags:
+        -
+          Key: Stage
+          Value: !Ref StageName
+      Name: !Sub ${EcsClusterName}-${StageName}-internet-df-tg
+      VpcId: !Ref VpcId
+      Port: !Ref LBListenerPort
+      Protocol: HTTP
+      Matcher:
+        HttpCode: 200-299
+      HealthCheckIntervalSeconds: 10
+      HealthCheckPath: /
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      TargetType: instance
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: 30
+
+  EcsSecurityGroup:
+    Condition: CreateNewSecurityGroup
+    DependsOn: AlbSecurityGroup
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub ${EcsClusterName}-${StageName}-ASGSecuritGroup
+      Tags: 
+        - 
+          Key: Stage
+          Value: !Ref StageName
+      GroupDescription: ECS Container Instances Allowed Ports
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+       - IpProtocol: tcp
+         FromPort: !Ref SecurityIngressFromPort
+         ToPort: !Ref SecurityIngressToPort
+         CidrIp: !Ref SecurityIngressCidrIp
+       - IpProtocol: -1
+         SourceSecurityGroupId:  !GetAtt [ AlbSecurityGroup, GroupId ]
+
+  EcsSecurityGroupIngress:
+     Type: "AWS::EC2::SecurityGroupIngress"
+     DependsOn: EcsSecurityGroup 
+     Properties: 
+       GroupId: 
+         Fn::GetAtt:
+         - EcsSecurityGroup
+         - GroupId
+       IpProtocol: -1
+       SourceSecurityGroupId: 
+         Fn::GetAtt:
+         - EcsSecurityGroup
+         - GroupId
+  IamInstanceRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: EcsEc2Role
+      Path: /
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - 
+            Action: 'sts:AssumeRole'
+            Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com.cn
+      ManagedPolicyArns:
+         - arn:aws-cn:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role
+         - arn:aws-cn:iam::aws:policy/AmazonEC2ContainerRegistryPowerUser
+      Policies:
+       -
+        PolicyName: "PutMetrics"
+        PolicyDocument:
+          Version: 2012-10-17
+          Statement:
+          -
+           Resource: '*'
+           Effect: Allow
+           Action:
+                - 'cloudwatch:PutMetricData'
+                - 'cloudwatch:GetMetricStatistics'
+                - 'cloudwatch:ListMetrics'
+          -
+           Resource: '*'
+           Effect: Allow
+           Action: 'ec2:DescribeTags'
+  EcsInstanceProfile:
+   Type: "AWS::IAM::InstanceProfile"
+   Properties: 
+     Path: /
+     Roles:
+       - !Ref IamInstanceRole
+     InstanceProfileName: Ec2InstanceProfile
+
+  EcsInstanceLc:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties:
+      ImageId: !FindInMap [ AWSRegionToAMI, !Ref "AWS::Region", AMI ]
+      InstanceType: !Select [ 0, !Ref EcsInstanceType ]
+      AssociatePublicIpAddress: true
+      IamInstanceProfile: !Ref EcsInstanceProfile
+      KeyName: !If [ CreateEC2LCWithKeyPair, !Ref KeyName, !Ref "AWS::NoValue" ]
+      SecurityGroups: [ !If [ CreateNewSecurityGroup, !Ref EcsSecurityGroup, !Ref SecurityGroupId ] ]
+      BlockDeviceMappings:
+      - DeviceName: !Ref DeviceName
+        Ebs:
+         VolumeSize: !Ref EbsVolumeSize
+         VolumeType: !Ref EbsVolumeType
+      UserData:
+        Fn::Base64: 
+           !Sub |
+               #!/bin/bash
+               echo "ECS_CLUSTER=${EcsClusterName}-${StageName}" >> /etc/ecs/ecs.config
+               echo "ECS_RESERVED_MEMORY=${EC2ReservedMemory}" >> /etc/ecs/ecs.config
+               sudo yum install perl-Switch perl-DateTime perl-Sys-Syslog perl-LWP-Protocol-https perl-Digest-SHA unzip -y
+               curl https://aws-cloudwatch.s3.amazonaws.com/downloads/CloudWatchMonitoringScripts-1.2.2.zip -O
+               unzip CloudWatchMonitoringScripts-1.2.2.zip&&cd aws-scripts-mon&&perl mon-put-instance-data.pl --mem-used-incl-cache-buff --mem-util --mem-used --mem-avail --auto-scaling=only&&rm -rf /CloudWatchMonitoringScripts-1.2.2.zip
+               echo '* * * * * /usr/bin/perl /aws-scripts-mon/mon-put-instance-data.pl --mem-used-incl-cache-buff --mem-util --mem-used --mem-avail --auto-scaling=only' >/var/spool/cron/root
+  EcsInstanceAsg:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    DependsOn: Cluster
+    Properties:
+      AutoScalingGroupName: !Sub ${EcsClusterName}-${StageName}-EcsInstanceAsg
+      VPCZoneIdentifier: !Ref SubnetIds
+      LaunchConfigurationName: !Ref EcsInstanceLc
+      MinSize: !Ref AsgMinSize
+      MaxSize: !Ref AsgMaxSize
+      DesiredCapacity: !Ref AsgMinSize
+      Tags:
+        -
+          Key: Name
+          Value: !Sub "ECS Instance - ${AWS::StackName}"
+          PropagateAtLaunch: 'true'
+        - 
+          Key: Stage
+          Value: !Ref StageName
+          PropagateAtLaunch: 'true'
+
+  ScaleUpPolicyCPU:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties:
+      AdjustmentType: ChangeInCapacity
+      AutoScalingGroupName:
+        Ref: EcsInstanceAsg
+      Cooldown: '300'
+      ScalingAdjustment: '1'
+
+  ScaleUpPolicyMEM:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties:
+      AdjustmentType: ChangeInCapacity
+      AutoScalingGroupName:
+        Ref: EcsInstanceAsg
+      Cooldown: '300'
+      ScalingAdjustment: '1'
+
+  CPUAlarmHigh:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      EvaluationPeriods: '5'
+      Statistic: Average
+      Threshold: '90'
+      AlarmDescription: Alarm if CPU Reservation too high or metric disappears indicating instance  is down
+      Period: '60'
+      AlarmActions:
+      - Ref: ScaleUpPolicyCPU
+      Namespace: AWS/ECS
+      Dimensions:
+      - Name: ClusterName
+        Value:
+          Ref: Cluster
+      ComparisonOperator: GreaterThanThreshold
+      MetricName: CPUReservation
+
+  MemAlarmHigh:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      EvaluationPeriods: '5'
+      Statistic: Average
+      Threshold: '90'
+      AlarmDescription: Alarm if Memory Reservation too high or metric disappears indicating instance  is down
+      Period: '60'
+      AlarmActions:
+      - Ref: ScaleUpPolicyMEM
+      Namespace: AWS/ECS
+      Dimensions:
+      - Name: ClusterName
+        Value:
+          Ref: Cluster
+      ComparisonOperator: GreaterThanThreshold
+      MetricName: MemoryReservation
+
+  ApplicationAutoScalingRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      Path: /
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - 
+            Action: 'sts:AssumeRole'
+            Effect: Allow
+            Principal:
+              Service: application-autoscaling.amazonaws.com.cn
+      ManagedPolicyArns:
+         - arn:aws-cn:iam::aws:policy/service-role/AmazonEC2ContainerServiceAutoscaleRole
+
+  AlbSecurityGroup:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      Tags:
+        -
+          Key: Stage
+          Value: !Ref StageName
+      GroupDescription: Application Load Balancer SG
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - CidrIp: "0.0.0.0/0"
+          IpProtocol: "TCP"
+          FromPort: !Ref LBListenerPort
+          ToPort: !Ref LBListenerPort
+
+  DatabaseSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: CloudFormation managed DB subnet group.
+      SubnetIds: !Ref SubnetIds
+
+  MyDBCluster:
+    Type: AWS::RDS::DBCluster
+    Properties:
+      Engine: aurora-postgresql
+      MasterUsername: !Ref "DatabaseUsername"
+      MasterUserPassword: !Ref "DatabasePassword"
+      BackupRetentionPeriod: 7
+      PreferredBackupWindow: 01:00-02:00
+      PreferredMaintenanceWindow: mon:03:00-mon:04:00
+      DBSubnetGroupName: !Ref "DatabaseSubnetGroup"
+      VpcSecurityGroupIds: !GetAtt [ EcsSecurityGroup, GroupId ]
+
+  DatabasePrimaryInstance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      Engine: aurora-postgresql
+      DBClusterIdentifier: !Ref "DatabaseCluster"
+      DBInstanceClass: !Ref "DBInstanceType"
+      DBSubnetGroupName: !Ref "DatabaseSubnetGroup"
+
+  DatabaseReplicaInstance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      Engine: aurora-postgresql
+      DBClusterIdentifier: !Ref "DatabaseCluster"
+      DBInstanceClass: !Ref "DBInstanceType"
+      DBSubnetGroupName: !Ref "DatabaseSubnetGroup"
+
+  AlarmTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName:  Alarm Topic
+
+  DatabaseReplicaReplicationAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Database replication latency is over 300ms.
+      Namespace: AWS/RDS
+      MetricName: AuroraReplicaLag
+      Unit: Milliseconds
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 300
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      Dimensions:
+        - Name: DBInstanceIdentifier
+          Value: !Ref "DatabaseReplicaInstance"
+      AlarmActions:
+        - Ref: AlarmTopic
+
+  DatabaseMasterReplicationAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Database replication latency is over 300ms.
+      Namespace: AWS/RDS
+      MetricName: AuroraReplicaLag
+      Unit: Milliseconds
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 300
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      Dimensions:
+        - Name: DBInstanceIdentifier
+          Value: !Ref "DatabasePrimaryInstance"
+      AlarmActions:
+        - Ref: AlarmTopic
+ 
+  CacheSubnetGroup:
+        Type: AWS::ElastiCache::SubnetGroup
+        Properties:
+            Description: "Cache Subnet Group"
+            SubnetIds:
+                Ref: SubnetIds 
+
+  ElastiCacheCluster:
+        Type: AWS::ElastiCache::ReplicationGroup
+        Properties:
+            AutomaticFailoverEnabled: true
+            AutoMinorVersionUpgrade: true
+            CacheNodeType: !Ref CacheInstanceType
+            CacheSubnetGroupName: !Ref CacheSubnetGroup
+            Engine: 'redis'
+            NumCacheClusters: 2
+#            Port: !Ref CachePort
+            ReplicationGroupDescription: 'Redis cluster'
+            SecurityGroupIds: !GetAtt [ EcsSecurityGroup, GroupId ]
+
+                
+Outputs:
+  EcsInstanceAsgName:
+    Description: Auto Scaling Group Name for ECS Instances
+    Value: !Ref EcsInstanceAsg
+  EcsInstanceSecurityGroupID:
+    Description: Security Group ID of Auto Scaling Group Container Instance
+    Value: !Ref EcsSecurityGroup
+    Export: 
+      Name: !Sub EcsInstanceSecurityGroupID-${StageName}
+  ClusterName:
+    Description: Name of ECS Cluster
+    Value: !Sub ${EcsClusterName}-${StageName}
+    Export:
+      Name: !Sub EcsClusterName-${StageName}
+  LBListenerInternetArn:
+    Description: Internet-facing Load Balancer Listener for ECS Services
+    Value: !Ref LoadBalancerListenerInternet
+    Export:
+       Name: !Sub LoadBalancerListener-internet-facing-${StageName}
+  LBURIInternet:
+    Description: DNS URI of internet-facing ApplicationLoadBalancer
+    Value: !GetAtt LoadBalancerInternet.DNSName
+    Export:
+      Name: !Sub LoadBalancer-internet-facing-DNS-${StageName}
+  DBEndpoint:
+    Description: The connection endpoint for the database.
+    Value: !GetAtt  DatabasePrimaryInstance.Endpoint.Address
+  RedisAddress:
+     Description: 'The DNS address of the primary read-write cache node.'
+     Value: !GetAtt ElastiCacheCluster.PrimaryEndPoint.Address  

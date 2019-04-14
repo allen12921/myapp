@@ -1,0 +1,86 @@
+---
+- name: start new aws infrastructure
+  hosts: localhost
+  gather_facts: false
+  vars_files:
+    - vars/base_{{Stage}}.yml
+  tasks:
+  - name: create vpc
+    cloudformation: 
+        region: "{{region}}"
+        stack_name: vpc-{{Stage}}
+        state: present
+        create_timeout: 10
+        termination_protection: yes
+        disable_rollback: false
+        template: cloudformation/vpc.yml
+        template_parameters:
+             VpcCidr: "{{VpcCidr}}"
+             SubnetCidr1: "{{SubnetCidr1}}"
+             SubnetCidr2: "{{SubnetCidr2}}"
+             VpcAvailabilityZones: "{{VpcAvailabilityZones}}"
+        tags:
+            Stage: "{{Stage}}"
+    register: vpc
+  - cloudformation_facts:
+        region: "{{region}}"
+        stack_name: vpc-{{Stage}}
+        stack_resources: true  
+  - set_fact:
+      SubnetIds: "{{ansible_facts['cloudformation']['vpc-'+Stage].stack_resources['PubSubnetAz1']+','+ansible_facts['cloudformation']['vpc-'+Stage].stack_resources['PubSubnetAz2']}}"
+      VpcId: "{{vpc.stack_outputs['VpcId']}}"
+  - name: create ecs,redis,rds
+    cloudformation:
+        region: "{{region}}"
+        stack_name: base-services-{{Stage}}
+        template: cloudformation/ecs.yml
+        termination_protection: yes
+        disable_rollback: false
+        template_parameters: 
+           StageName: "{{Stage}}"
+           EcsClusterName: "Cluster-{{Stage}}" 
+           VpcId: "{{VpcId}}"
+           SubnetIds: "{{SubnetIds}}"
+           LBListenerPort: 80          
+        tags:
+            Stage: "{{Stage}}"
+    register: base_service
+  
+  - name: create ecr 
+    ecs_ecr: 
+        name: services
+        region: "{{region}}"   
+    register: ecr
+  
+  #- name: create database
+  #  postgresql_db:
+  #    region: "{{region}}"
+  #    name: mydb
+  #    login_host:
+  #    login_password: 
+  #    login_user:
+  
+  #- name: Clone git repository
+  #  git: 
+  #    repo: https://github.com/allen12921/myapp.git
+  #    dest: $HOME/myapp
+  #    version: "{{release_tag}}"
+  #    force: yes
+  #  register: appsrc
+  
+  #- name: Build app image and push it to ecr
+  #  docker_image:
+  #    path: dockerfile
+  #    name: "{{ecr}}/myapp"
+  #    tag: "{{appsrc.after}}"
+  #    push: no
+  #  when: appsrc.changed
+  
+  #- name: create or update myapp ecs service
+  #  register: myapp 
+  -  cloudformation_facts:
+        region: "{{region}}"
+        stack_name: vpc-{{Stage}}
+        stack_resources: true
+  - name: debug events
+    debug: msg="{{ecr.repository.repositoryUri}}"
