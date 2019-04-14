@@ -1,0 +1,159 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  AWS CloudFormation template to use an existing VPC for RDS deployment
+  in Create Cluster Wizard.
+Parameters:
+  StageName:
+    Type: String
+    Default: PROD
+    AllowedValues:
+      - UAT
+      - PROD
+      - QA
+  DBInstanceType: 
+    Type: String
+    Description: >
+      Specifies the RDS instance type for your container instances.
+      Defaults to db.t2.small
+    Default: db.t2.small
+    ConstraintDescription: must be a valid RDS instance type.     
+  VpcId:
+    Type: String
+    Description: >
+      Optional - Specifies the ID of an existing VPC in which to launch
+      your container instances. If you specify a VPC ID, you must specify a list of
+      existing subnets in that VPC. If you do not specify a VPC ID, a new VPC is created
+      with atleast 1 subnet.
+    Default: 'vpc-005ba32235ba7fab5'
+    ConstraintDescription: >
+      VPC Id must begin with 'vpc-'
+  SubnetIds:
+#    Type: CommaDelimitedList
+    Type: List<AWS::EC2::Subnet::Id> 
+    Description: >
+      Optional - Specifies the Comma separated list of existing VPC Subnet
+      Ids where ECS instances will run
+    Default: "subnet-083d3429fc0a1118c,subnet-06d160788ce2f5d07"
+  SecurityGroupId:
+    Type: String
+    Description: >
+      Optional - Specifies the Security Group Id of an existing Security
+      Group. Leave blank to have a new Security Group created
+    Default: ''
+
+Conditions:
+  CreateNewSecurityGroup:
+    !Equals [!Ref SecurityGroupId, '']
+
+Resources:
+  EcsSecurityGroup:
+    Condition: CreateNewSecurityGroup
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      Tags: 
+        - 
+          Key: Stage
+          Value: !Ref StageName
+      GroupDescription: ECS Container Instances Allowed Ports
+      VpcId: !Ref VpcId
+
+  EcsSecurityGroupIngress:
+     Type: "AWS::EC2::SecurityGroupIngress"
+     DependsOn: EcsSecurityGroup 
+     Properties: 
+       GroupId: 
+         Fn::GetAtt:
+         - EcsSecurityGroup
+         - GroupId
+       IpProtocol: -1
+       SourceSecurityGroupId: 
+        - Fn::GetAtt:
+          - EcsSecurityGroup
+          - GroupId
+
+
+#  DatabaseSubnetGroup:
+#    Type: AWS::RDS::DBSubnetGroup
+#    Properties:
+#      DBSubnetGroupDescription: CloudFormation managed DB subnet group.
+#      SubnetIds: !Ref SubnetIds
+#
+#  MyDBCluster:
+#    Type: AWS::RDS::DBCluster
+#    Properties:
+#      Engine: aurora-postgresql
+#      MasterUsername: !Ref "DatabaseUsername"
+#      MasterUserPassword: !Ref "DatabasePassword"
+#      BackupRetentionPeriod: 7
+#      PreferredBackupWindow: 01:00-02:00
+#      PreferredMaintenanceWindow: mon:03:00-mon:04:00
+#      DBSubnetGroupName: !Ref "DatabaseSubnetGroup"
+#      VpcSecurityGroupIds: !GetAtt [ EcsSecurityGroup, GroupId ]
+#
+#  DatabasePrimaryInstance:
+#    Type: AWS::RDS::DBInstance
+#    Properties:
+#      Engine: aurora-postgresql
+#      DBClusterIdentifier: !Ref "DatabaseCluster"
+#      DBInstanceClass: !Ref "DBInstanceType"
+#      DBSubnetGroupName: !Ref "DatabaseSubnetGroup"
+#
+#  DatabaseReplicaInstance:
+#    Type: AWS::RDS::DBInstance
+#    Properties:
+#      Engine: aurora-postgresql
+#      DBClusterIdentifier: !Ref "DatabaseCluster"
+#      DBInstanceClass: !Ref "DBInstanceType"
+#      DBSubnetGroupName: !Ref "DatabaseSubnetGroup"
+#
+#  AlarmTopic:
+#    Type: AWS::SNS::Topic
+#    Properties:
+#      DisplayName:  Alarm Topic
+#
+#  DatabaseReplicaReplicationAlarm:
+#    Type: AWS::CloudWatch::Alarm
+#    Properties:
+#      AlarmDescription: Database replication latency is over 300ms.
+#      Namespace: AWS/RDS
+#      MetricName: AuroraReplicaLag
+#      Unit: Milliseconds
+#      Statistic: Average
+#      Period: 300
+#      EvaluationPeriods: 2
+#      Threshold: 300
+#      ComparisonOperator: GreaterThanOrEqualToThreshold
+#      Dimensions:
+#        - Name: DBInstanceIdentifier
+#          Value: !Ref "DatabaseReplicaInstance"
+#      AlarmActions:
+#        - Ref: AlarmTopic
+#
+#  DatabaseMasterReplicationAlarm:
+#    Type: AWS::CloudWatch::Alarm
+#    Properties:
+#      AlarmDescription: Database replication latency is over 300ms.
+#      Namespace: AWS/RDS
+#      MetricName: AuroraReplicaLag
+#      Unit: Milliseconds
+#      Statistic: Average
+#      Period: 300
+#      EvaluationPeriods: 2
+#      Threshold: 300
+#      ComparisonOperator: GreaterThanOrEqualToThreshold
+#      Dimensions:
+#        - Name: DBInstanceIdentifier
+#          Value: !Ref "DatabasePrimaryInstance"
+#      AlarmActions:
+#        - Ref: AlarmTopic
+# 
+
+Outputs:
+  RdsecurityGroupID:
+    Description: Security Group ID of Rds
+    Value: !Ref EcsSecurityGroup
+    Export: 
+      Name: !Sub RdsSecurityGroupID-${StageName}
+  DBEndpoint:
+    Description: The connection endpoint for the database.
+    Value: !GetAtt  DatabasePrimaryInstance.Endpoint.Address

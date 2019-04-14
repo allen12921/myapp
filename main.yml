@@ -94,6 +94,7 @@
       subnet: myrds_subnet
       size: 100
       wait: yes
+      wait_timeout: 600
       region: "{{region}}"
       publicly_accessible: yes
       instance_type: db.t2.micro

@@ -1,0 +1,108 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  AWS CloudFormation template to use an existing VPC for redis deployment
+Parameters:
+  VpcId:
+    Type: String
+    Description: >
+      Optional - Specifies the ID of an existing VPC in which to launch
+      your container instances. If you specify a VPC ID, you must specify a list of
+      existing subnets in that VPC. If you do not specify a VPC ID, a new VPC is created
+      with atleast 1 subnet.
+    Default: 'vpc-005ba32235ba7fab5'
+    ConstraintDescription: >
+      VPC Id must begin with 'vpc-'
+  StageName:
+    Type: String
+    Default: PROD
+    AllowedValues:
+      - UAT
+      - PROD
+      - QA  
+  CacheInstanceType:
+    Type: String  
+    Description: >      
+      Specifies the elasticache instance type for your container instances.
+      Defaults to cache.t2.micro
+    Default:  cache.t2.micro
+    ConstraintDescription: must be a valid elasticache instance type.    
+  SubnetIds:
+#    Type: CommaDelimitedList
+    Type: List<AWS::EC2::Subnet::Id> 
+    Description: >
+      Optional - Specifies the Comma separated list of existing VPC Subnet
+      Ids where ECS instances will run
+    Default: "subnet-083d3429fc0a1118c,subnet-06d160788ce2f5d07"
+  SecurityGroupId:
+    Type: String
+    Description: >
+      Optional - Specifies the Security Group Id of an existing Security
+      Group. Leave blank to have a new Security Group created
+    Default: ''
+
+
+Conditions:
+  CreateNewSecurityGroup:
+    !Equals [!Ref SecurityGroupId, '']
+
+
+Resources:
+  EcsSecurityGroup:
+    Condition: CreateNewSecurityGroup
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      Tags: 
+        - 
+          Key: Stage
+          Value: !Ref StageName
+      GroupDescription: ECS Container Instances Allowed Ports
+      VpcId: !Ref VpcId
+
+  EcsSecurityGroupIngress:
+     Type: "AWS::EC2::SecurityGroupIngress"
+     DependsOn: EcsSecurityGroup 
+     Properties: 
+       GroupId: 
+         Fn::GetAtt:
+         - EcsSecurityGroup
+         - GroupId
+       IpProtocol: -1
+       SourceSecurityGroupId: 
+         Fn::GetAtt:
+         - EcsSecurityGroup
+         - GroupId
+ 
+  CacheSubnetGroup:
+        Type: AWS::ElastiCache::SubnetGroup
+        Properties:
+            Description: "Cache Subnet Group"
+            SubnetIds:
+                Ref: SubnetIds 
+
+  ElastiCacheCluster:
+        Type: AWS::ElastiCache::ReplicationGroup
+        Properties:
+            AutomaticFailoverEnabled: true
+            AutoMinorVersionUpgrade: true
+            CacheNodeType: !Ref CacheInstanceType
+            CacheSubnetGroupName: !Ref CacheSubnetGroup
+            Engine: 'redis'
+            NumCacheClusters: 2
+#            Port: !Ref CachePort
+            ReplicationGroupDescription: 'Redis cluster'
+            SecurityGroupIds: 
+                      - !GetAtt [ EcsSecurityGroup, GroupId ]
+
+                
+Outputs:
+  ElastiCacheSecurityGroupID:
+    Description: Security Group ID of Elasti Cache Cluster
+    Value: !Ref EcsSecurityGroup
+    Export: 
+      Name: !Sub ElastiCacheSecurityGroupID-${StageName}
+#  DBEndpoint:
+#    Description: The connection endpoint for the database.
+#    Value: !GetAtt  DatabasePrimaryInstance.Endpoint.Address
+  RedisAddress:
+     Description: 'The DNS address of the primary read-write cache node.'
+     Value: !GetAtt ElastiCacheCluster.PrimaryEndPoint.Address
